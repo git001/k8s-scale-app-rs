@@ -1,0 +1,1 @@
+# k8s-scale-app-rs
