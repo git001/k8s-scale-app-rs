@@ -1,0 +1,78 @@
+image:
+  repository: ghcr.io/git001/k8s-scale-app-rs
+  # Empty -> use Chart.appVersion
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# CronJob settings
+schedule: "0 * * * *"
+suspend: false
+concurrencyPolicy: Forbid
+successfulJobsHistoryLimit: 3
+failedJobsHistoryLimit: 1
+backoffLimit: 1
+
+# Scaling target. The namespace is taken at runtime from the pod's own
+# metadata.namespace via the Downward API, so the CronJob always scales
+# a deployment in its own namespace.
+target:
+  deployment: ""
+  replicas: 1
+  dryRun: false
+
+serviceAccount:
+  name: deploy
+  # If true, create the ServiceAccount.
+  # Leave false when "deploy" already exists in the namespace.
+  create: false
+
+# Namespace-scoped Role + RoleBinding granting access to deployments/scale.
+rbac:
+  create: true
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 64Mi
+  requests:
+    cpu: 10m
+    memory: 16Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Additional CA chain to trust (merged with the in-cluster CA).
+# Provided to the container via a ConfigMap mounted as a file.
+extraCA:
+  enabled: false
+  # Use an existing ConfigMap (must contain `key` below). Leave empty to
+  # let the chart create a ConfigMap from `bundle`.
+  existingConfigMap: ""
+  # Inline PEM bundle (used only when enabled and existingConfigMap is empty)
+  bundle: ""
+  # Key inside the ConfigMap holding the PEM bundle
+  key: "ca-bundle.pem"
+  # Mount path inside the container
+  mountPath: "/etc/ssl/extra-ca"
+
+# RUST_LOG value for the container
+logLevel: info
+
+nameOverride: ""
+fullnameOverride: ""

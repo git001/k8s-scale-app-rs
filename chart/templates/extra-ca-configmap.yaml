@@ -1,0 +1,11 @@
+{{- if and .Values.extraCA.enabled (not .Values.extraCA.existingConfigMap) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-scale-app-rs.extraCAConfigMapName" . }}
+  labels:
+    {{- include "k8s-scale-app-rs.labels" . | nindent 4 }}
+data:
+  {{ .Values.extraCA.key }}: |-
+{{ required "extraCA.bundle is required when extraCA.enabled and extraCA.existingConfigMap is empty" .Values.extraCA.bundle | indent 4 }}
+{{- end }}

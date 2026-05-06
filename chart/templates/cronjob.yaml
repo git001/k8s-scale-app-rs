@@ -1,0 +1,80 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "k8s-scale-app-rs.fullname" . }}
+  labels:
+    {{- include "k8s-scale-app-rs.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  suspend: {{ .Values.suspend }}
+  concurrencyPolicy: {{ .Values.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.backoffLimit }}
+      template:
+        metadata:
+          labels:
+            {{- include "k8s-scale-app-rs.labels" . | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "k8s-scale-app-rs.serviceAccountName" . }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: scaler
+              image: {{ include "k8s-scale-app-rs.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              env:
+                - name: SCALE_DEPLOYMENT
+                  value: {{ required "target.deployment is required" .Values.target.deployment | quote }}
+                - name: SCALE_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: SCALE_REPLICAS
+                  value: {{ .Values.target.replicas | quote }}
+                - name: SCALE_DRY_RUN
+                  value: {{ .Values.target.dryRun | quote }}
+                - name: RUST_LOG
+                  value: {{ .Values.logLevel | quote }}
+                {{- if .Values.extraCA.enabled }}
+                - name: SCALE_EXTRA_CA_BUNDLE
+                  value: {{ printf "%s/%s" .Values.extraCA.mountPath .Values.extraCA.key | quote }}
+                {{- end }}
+              {{- if .Values.extraCA.enabled }}
+              volumeMounts:
+                - name: extra-ca
+                  mountPath: {{ .Values.extraCA.mountPath }}
+                  readOnly: true
+              {{- end }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+          {{- if .Values.extraCA.enabled }}
+          volumes:
+            - name: extra-ca
+              configMap:
+                name: {{ include "k8s-scale-app-rs.extraCAConfigMapName" . }}
+                items:
+                  - key: {{ .Values.extraCA.key }}
+                    path: {{ .Values.extraCA.key }}
+          {{- end }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

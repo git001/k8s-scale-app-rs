@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k8s-scale-app-rs
+spec:
+  schedule: "0 * * * *"
+  suspend: false
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: deploy
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: scaler
+              image: ghcr.io/git001/k8s-scale-app-rs:latest
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              env:
+                - name: SCALE_DEPLOYMENT
+                  value: "REPLACE_ME"
+                - name: SCALE_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: SCALE_REPLICAS
+                  value: "1"
+                - name: SCALE_DRY_RUN
+                  value: "false"
+                - name: RUST_LOG
+                  value: "info"
+                - name: SCALE_EXTRA_CA_BUNDLE
+                  value: "/etc/ssl/extra-ca/ca-bundle.pem"
+              volumeMounts:
+                - name: extra-ca
+                  mountPath: /etc/ssl/extra-ca
+                  readOnly: true
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+                requests:
+                  cpu: 10m
+                  memory: 16Mi
+          volumes:
+            - name: extra-ca
+              configMap:
+                # ConfigMap "extra-ca-bundle" must contain key "ca-bundle.pem".
+                # Generate it from an overlay via configMapGenerator, or
+                # provide it pre-existing in the target namespace.
+                name: extra-ca-bundle
+                items:
+                  - key: ca-bundle.pem
+                    path: ca-bundle.pem

@@ -1,0 +1,18 @@
+image:
+  tag: "stable"
+
+schedule: "0 6 * * *"
+
+target:
+  deployment: my-app
+  replicas: 3
+  dryRun: false
+
+serviceAccount:
+  name: deploy
+  create: false
+
+rbac:
+  create: true
+
+logLevel: info

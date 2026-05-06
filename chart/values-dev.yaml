@@ -1,0 +1,18 @@
+image:
+  tag: "dev"
+
+schedule: "*/15 * * * *"
+
+target:
+  deployment: my-app
+  replicas: 1
+  dryRun: true
+
+serviceAccount:
+  name: deploy
+  create: true
+
+rbac:
+  create: true
+
+logLevel: debug

@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Base contains only the CronJob. ServiceAccount and RBAC are opt-in via
+# components — include them from an overlay when needed:
+#   - components/serviceaccount  → creates the "deploy" ServiceAccount
+#   - components/rbac            → creates Role + RoleBinding
+# Base assumes the "deploy" ServiceAccount already has the required
+# permissions if neither component is included.
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/name: k8s-scale-app-rs
+      app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - cronjob.yaml
+
+images:
+  - name: ghcr.io/git001/k8s-scale-app-rs
+    newTag: latest

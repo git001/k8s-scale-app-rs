@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k8s-scale-app-rs
+spec:
+  schedule: "0 6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: scaler
+              env:
+                - name: SCALE_DEPLOYMENT
+                  value: "my-app"
+                - name: SCALE_REPLICAS
+                  value: "3"
+                - name: SCALE_DRY_RUN
+                  value: "false"
+                - name: RUST_LOG
+                  value: "info"
