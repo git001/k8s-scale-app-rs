@@ -1,0 +1,31 @@
+# cargo-about configuration: https://embarkstudios.github.io/cargo-about/
+#
+# `accepted` lists every SPDX license identifier we have audited and consider
+# acceptable for public redistribution of the resulting binary. `cargo about
+# generate` fails if a transitive dependency reports a license outside this
+# set, which gives us a tripwire when new crates pull in unfamiliar terms.
+
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "BSL-1.0",
+    "Unlicense",
+    "CC0-1.0",
+    "Zlib",
+    "MPL-2.0",
+    "0BSD",
+]
+
+# Only consider crates that end up in the Linux release binary.
+targets = [
+    "x86_64-unknown-linux-gnu",
+]
+
+# Build- and dev-dependencies are not shipped inside the binary, so their
+# licenses do not need to be bundled.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true

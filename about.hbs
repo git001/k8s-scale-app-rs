@@ -1,0 +1,28 @@
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+============================================
+
+The k8s-scale-app-rs binary statically links the Rust crates listed below.
+Each crate is used under the terms of the license shown for that crate.
+The full text of every distinct license follows after the summary.
+
+Summary
+-------
+{{#each overview}}
+  * {{{name}}} ({{count}} crate{{#unless (eq count 1)}}s{{/unless}})
+{{/each}}
+
+Licenses
+--------
+{{#each licenses}}
+
+================================================================================
+License: {{{name}}}
+Used by:
+{{#each used_by}}
+  - {{{this.crate.name}}} {{{this.crate.version}}}{{#if this.crate.repository}} <{{{this.crate.repository}}}>{{/if}}
+{{/each}}
+================================================================================
+
+{{{text}}}
+
+{{/each}}
