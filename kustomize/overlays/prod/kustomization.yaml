@@ -9,11 +9,13 @@ resources:
 # Prod assumes the "deploy" ServiceAccount already exists in the namespace
 # and only opts in to the namespace-scoped RBAC. To also create the SA,
 # add ../../components/serviceaccount to the components list.
+#
+# To mount a corporate CA bundle, additionally include ../../components/extra-ca
+# and generate the ConfigMap here (see the commented configMapGenerator below).
 components:
   - ../../components/rbac
+  # - ../../components/extra-ca
 
-# The CronJob in base mounts a ConfigMap "extra-ca-bundle" with key
-# "ca-bundle.pem". Generate it from a local PEM file:
 # configMapGenerator:
 #   - name: extra-ca-bundle
 #     files:

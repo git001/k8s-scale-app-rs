@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k8s-scale-app-rs
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: scaler
+              env:
+                - name: K8S_SCALE_EXTRA_CA_BUNDLE
+                  value: /etc/ssl/extra-ca/ca-bundle.pem
+              volumeMounts:
+                - name: extra-ca
+                  mountPath: /etc/ssl/extra-ca
+                  readOnly: true
+          volumes:
+            - name: extra-ca
+              configMap:
+                name: extra-ca-bundle
+                items:
+                  - key: ca-bundle.pem
+                    path: ca-bundle.pem

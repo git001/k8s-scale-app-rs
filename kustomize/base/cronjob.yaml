@@ -47,12 +47,6 @@ spec:
                   value: "false"
                 - name: RUST_LOG
                   value: "info"
-                - name: K8S_SCALE_EXTRA_CA_BUNDLE
-                  value: "/etc/ssl/extra-ca/ca-bundle.pem"
-              volumeMounts:
-                - name: extra-ca
-                  mountPath: /etc/ssl/extra-ca
-                  readOnly: true
               resources:
                 limits:
                   cpu: 100m
@@ -60,13 +54,3 @@ spec:
                 requests:
                   cpu: 10m
                   memory: 16Mi
-          volumes:
-            - name: extra-ca
-              configMap:
-                # ConfigMap "extra-ca-bundle" must contain key "ca-bundle.pem".
-                # Generate it from an overlay via configMapGenerator, or
-                # provide it pre-existing in the target namespace.
-                name: extra-ca-bundle
-                items:
-                  - key: ca-bundle.pem
-                    path: ca-bundle.pem
