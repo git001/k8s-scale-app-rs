@@ -14,11 +14,17 @@ successfulJobsHistoryLimit: 3
 failedJobsHistoryLimit: 1
 backoffLimit: 1
 
-# Scaling target. The namespace is taken at runtime from the pod's own
-# metadata.namespace via the Downward API, so the CronJob always scales
+# Operation mode. Selects the CLI subcommand invoked by the CronJob:
+#   scale   -> set the target Deployment to `target.replicas`
+#   restart -> patch the pod template's `restartedAt` annotation
+mode: scale
+
+# Target Deployment. The namespace is taken at runtime from the pod's own
+# metadata.namespace via the Downward API, so the CronJob always acts on
 # a deployment in its own namespace.
 target:
   deployment: ""
+  # replicas is only used when mode == "scale"
   replicas: 1
   dryRun: false
 

@@ -6,9 +6,12 @@ metadata:
   labels:
     {{- include "k8s-scale-app-rs.labels" . | nindent 4 }}
 rules:
+  # get:   used in both modes
+  # patch: needed by the "restart" mode to update spec.template.metadata.annotations
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get"]
+    verbs: ["get", "patch"]
+  # scale subresource: used by the "scale" mode
   - apiGroups: ["apps"]
     resources: ["deployments/scale"]
     verbs: ["get", "patch", "update"]

@@ -11,11 +11,11 @@ spec:
           containers:
             - name: scaler
               env:
-                - name: SCALE_DEPLOYMENT
+                - name: K8S_SCALE_DEPLOYMENT
                   value: "my-app"
-                - name: SCALE_REPLICAS
+                - name: K8S_SCALE_REPLICAS
                   value: "2"
-                - name: SCALE_DRY_RUN
+                - name: K8S_SCALE_DRY_RUN
                   value: "false"
                 - name: RUST_LOG
                   value: "info"

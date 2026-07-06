@@ -1,3 +1,6 @@
+{{- if not (has .Values.mode (list "scale" "restart")) -}}
+{{- fail (printf "mode must be \"scale\" or \"restart\", got %q" .Values.mode) -}}
+{{- end -}}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -30,23 +33,27 @@ spec:
             - name: scaler
               image: {{ include "k8s-scale-app-rs.image" . }}
               imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args:
+                - {{ .Values.mode | quote }}
               securityContext:
                 {{- toYaml .Values.securityContext | nindent 16 }}
               env:
-                - name: SCALE_DEPLOYMENT
+                - name: K8S_SCALE_DEPLOYMENT
                   value: {{ required "target.deployment is required" .Values.target.deployment | quote }}
-                - name: SCALE_NAMESPACE
+                - name: K8S_SCALE_NAMESPACE
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
-                - name: SCALE_REPLICAS
+                {{- if eq .Values.mode "scale" }}
+                - name: K8S_SCALE_REPLICAS
                   value: {{ .Values.target.replicas | quote }}
-                - name: SCALE_DRY_RUN
+                {{- end }}
+                - name: K8S_SCALE_DRY_RUN
                   value: {{ .Values.target.dryRun | quote }}
                 - name: RUST_LOG
                   value: {{ .Values.logLevel | quote }}
                 {{- if .Values.extraCA.enabled }}
-                - name: SCALE_EXTRA_CA_BUNDLE
+                - name: K8S_SCALE_EXTRA_CA_BUNDLE
                   value: {{ printf "%s/%s" .Values.extraCA.mountPath .Values.extraCA.key | quote }}
                 {{- end }}
               {{- if .Values.extraCA.enabled }}

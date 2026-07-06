@@ -1,21 +1,23 @@
 [package]
 name = "k8s-scale-app-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.95"
 authors = ["Aleks <al-git001@none.at>"]
 license = "MIT"
-description = "CLI to set the replica count of a Kubernetes Deployment via the Kubernetes API"
+description = "CLI to scale or restart a Kubernetes Deployment via the Kubernetes API"
 repository = "https://github.com/git001/k8s-scale-app-rs"
 readme = "README.md"
 
 [dependencies]
 anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 clap = { version = "4.5", features = ["derive", "env"] }
-k8s-openapi = { version = "0.24", features = ["v1_32"] }
-kube = { version = "0.99", default-features = false, features = ["client", "rustls-tls"] }
+k8s-openapi = { version = "0.28", features = ["v1_34"] }
+kube = { version = "4", default-features = false, features = ["client", "rustls-tls"] }
 mimalloc = { version = "0.1", default-features = false }
 pem = "3"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1"

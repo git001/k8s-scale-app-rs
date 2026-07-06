@@ -24,6 +24,10 @@ spec:
             - name: scaler
               image: ghcr.io/git001/k8s-scale-app-rs:latest
               imagePullPolicy: IfNotPresent
+              # Default mode. Override in an overlay by patching args to ["restart"].
+              # K8S_SCALE_REPLICAS is ignored when args is "restart".
+              args:
+                - scale
               securityContext:
                 allowPrivilegeEscalation: false
                 readOnlyRootFilesystem: true
@@ -31,19 +35,19 @@ spec:
                   drop:
                     - ALL
               env:
-                - name: SCALE_DEPLOYMENT
+                - name: K8S_SCALE_DEPLOYMENT
                   value: "REPLACE_ME"
-                - name: SCALE_NAMESPACE
+                - name: K8S_SCALE_NAMESPACE
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.namespace
-                - name: SCALE_REPLICAS
+                - name: K8S_SCALE_REPLICAS
                   value: "1"
-                - name: SCALE_DRY_RUN
+                - name: K8S_SCALE_DRY_RUN
                   value: "false"
                 - name: RUST_LOG
                   value: "info"
-                - name: SCALE_EXTRA_CA_BUNDLE
+                - name: K8S_SCALE_EXTRA_CA_BUNDLE
                   value: "/etc/ssl/extra-ca/ca-bundle.pem"
               volumeMounts:
                 - name: extra-ca
