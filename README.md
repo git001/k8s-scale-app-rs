@@ -9,6 +9,8 @@ Small Rust CLI that either **scales** a Kubernetes Deployment to a fixed replica
 - Optional extra CA chain for the cluster API (e.g. corporate CA), provided via ConfigMap
 - Namespace is read at runtime from the pod via the Downward API — the CronJob always acts on a deployment in its own namespace
 
+Introductory write-up: [k8s-scale-app-rs: Scale or Restart a Kubernetes Deployment from a CronJob](https://blog.none.at/blog/2026/2026-07-06-k8s-scale-app-rs/) on blog.none.at.
+
 ## Requirements
 
 | Tool         | Version                                                                   |
