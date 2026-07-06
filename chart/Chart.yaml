@@ -2,8 +2,8 @@ apiVersion: v2
 name: k8s-scale-app-rs
 description: Set Kubernetes Deployment replicas via a CronJob using the k8s-scale-app-rs CLI
 type: application
-version: 0.2.0
-appVersion: "0.2.0"
+version: 0.5.0
+appVersion: "0.5.0"
 home: https://github.com/git001/k8s-scale-app-rs
 sources:
   - https://github.com/git001/k8s-scale-app-rs
