@@ -26,7 +26,7 @@ const RESTART_ANNOTATION: &str = "kubectl.kubernetes.io/restartedAt";
 #[derive(Parser, Debug)]
 #[command(
     version,
-    about = "Scale or restart a Kubernetes Deployment via the Kubernetes API"
+    about = "Scale or restart a Kubernetes Deployment or StatefulSet via the Kubernetes API"
 )]
 struct Cli {
     #[command(subcommand)]

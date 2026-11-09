@@ -232,6 +232,8 @@ Tested with [tests/k8s/vigil-gateway.sh](tests/k8s/vigil-gateway.sh) through a p
 | Istio 1.31.4 | Basic Auth, client certificates | Basic Auth |
 | HAProxy Unified Gateway v1.0.10 | Basic Auth, client certificates | **no**: answers 502, it does not apply `BackendTLSPolicy` |
 
+Envoy Gateway was tested with the release state, Istio and HAProxy Unified Gateway with the state before the checks for unknown settings.
+
 ## Deploy with Kustomize
 
 ```bash
