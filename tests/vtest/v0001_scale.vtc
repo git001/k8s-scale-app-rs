@@ -1,0 +1,20 @@
+vtest "scale: PATCH on the scale subresource, without dry-run"
+
+server s1 -listen 127.0.0.1:26443 {
+	rxreq
+	expect req.method == PATCH
+	expect req.url ~ "^/apis/apps/v1/namespaces/demo/deployments/web/scale[?]"
+	expect req.url ~ "fieldManager=k8s-scale-app-rs"
+	expect req.url !~ "dryRun"
+	expect req.http.content-type == "application/merge-patch+json"
+	expect req.body == {{"spec":{"replicas":3}}}
+	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/scale-3.json
+} -start
+
+# The replica count in the log comes from the API response.
+shell -match {scale request completed .*replicas=3 dry_run=false} {
+	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	${k8s_scale} scale --deployment web --namespace demo --replicas 3
+}
+
+server s1 -wait

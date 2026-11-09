@@ -1,0 +1,42 @@
+vtest "--extra-ca-bundle: a valid bundle, alone and merged with the kubeconfig CA; bad bundles stop before any request"
+
+server s1 -listen 127.0.0.1:26443 -repeat 2 {
+	rxreq
+	expect req.method == PATCH
+	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/scale-3.json
+} -start
+
+# The kubeconfig has no CA: the bundle becomes the trust store.
+shell -match {merging extra CA certificates into trust store .*count=1} {
+	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
+		--extra-ca-bundle ${vtestdir}/fixtures/ca-bundle.pem
+}
+
+# The kubeconfig has a CA: the bundle is added to it.
+shell -match {merging extra CA certificates into trust store .*count=1} {
+	KUBECONFIG=${vtestdir}/fixtures/kubeconfig-with-ca.yaml NO_COLOR=1 \
+	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
+		--extra-ca-bundle ${vtestdir}/fixtures/ca-bundle.pem
+}
+
+server s1 -wait
+
+# The server is gone: these must fail on the bundle, not on the connection.
+shell -exit 1 -match {failed to read CA bundle /nonexistent/ca.pem} {
+	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
+		--extra-ca-bundle /nonexistent/ca.pem
+}
+
+shell -exit 1 -match {contains no CERTIFICATE entries} {
+	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
+		--extra-ca-bundle ${vtestdir}/fixtures/no-certificate.pem
+}
+
+shell -exit 1 -match {failed to parse PEM in .*malformed.pem} {
+	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
+		--extra-ca-bundle ${vtestdir}/fixtures/malformed.pem
+}

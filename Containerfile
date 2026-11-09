@@ -5,12 +5,12 @@
 # debugging use Containerfile.debug (contains bash/curl/dig).
 
 # ---- Build stage --------------------------------------------------------
-FROM docker.io/library/rust:1.95 AS builder
+FROM docker.io/library/rust:1.99 AS builder
 
 WORKDIR /build
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo install cargo-about --locked --version "^0.6"
+    cargo install cargo-about --locked --features cli --version "^0.9"
 
 COPY Cargo.toml Cargo.lock rust-toolchain.toml about.toml about.hbs ./
 COPY src ./src

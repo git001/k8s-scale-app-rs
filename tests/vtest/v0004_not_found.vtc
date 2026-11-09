@@ -1,0 +1,19 @@
+vtest "a 404 from the API: exit code 1 with the Deployment and the reason"
+
+server s1 -listen 127.0.0.1:26443 -repeat 2 {
+	rxreq
+	expect req.url ~ "/namespaces/demo/deployments/web"
+	txresp -status 404 -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/not-found.json
+} -start
+
+shell -exit 1 -match {failed to patch scale for demo/web(.|\n)*not found} {
+	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	${k8s_scale} scale --deployment web --namespace demo --replicas 3
+}
+
+shell -exit 1 -match {failed to patch deployment demo/web(.|\n)*not found} {
+	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	${k8s_scale} restart --deployment web --namespace demo
+}
+
+server s1 -wait

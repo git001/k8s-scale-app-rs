@@ -127,7 +127,8 @@ fn no_subcommand_fails() {
 
 #[test]
 fn extra_ca_bundle_missing_file_fails_cleanly() {
-    // No cluster contact happens: the CLI reads the CA file before touching the network.
+    // No cluster contact happens: the CLI reads the CA file before it builds
+    // the client. The kubeconfig only has to be valid, its server is not used.
     let out = clean_cmd()
         .args([
             "scale",
@@ -141,17 +142,19 @@ fn extra_ca_bundle_missing_file_fails_cleanly() {
             "/nonexistent/path/ca.pem",
             "--dry-run",
         ])
-        .env("KUBECONFIG", "/nonexistent/kubeconfig") // force offline
+        .env(
+            "KUBECONFIG",
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/vtest/fixtures/kubeconfig.yaml"
+            ),
+        )
         .output()
         .expect("scale run");
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    // The failure may come from either the missing CA file or the missing
-    // kubeconfig — both prove we bail before any real cluster call.
     assert!(
-        stderr.contains("CA bundle")
-            || stderr.contains("kubeconfig")
-            || stderr.contains("No such file"),
+        stderr.contains("failed to read CA bundle /nonexistent/path/ca.pem"),
         "unexpected error: {stderr}"
     );
 }

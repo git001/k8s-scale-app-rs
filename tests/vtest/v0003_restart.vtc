@@ -1,0 +1,19 @@
+vtest "restart: PATCH on the Deployment sets the restartedAt annotation"
+
+server s1 -listen 127.0.0.1:26443 {
+	rxreq
+	expect req.method == PATCH
+	expect req.url ~ "^/apis/apps/v1/namespaces/demo/deployments/web[?]"
+	expect req.url ~ "fieldManager=k8s-scale-app-rs"
+	expect req.url !~ "dryRun"
+	expect req.http.content-type == "application/merge-patch+json"
+	expect req.body ~ "kubectl.kubernetes.io/restartedAt.:.20[0-9][0-9]-"
+	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/deployment.json
+} -start
+
+shell -match {restart request completed .*dry_run=false} {
+	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	${k8s_scale} restart --deployment web --namespace demo
+}
+
+server s1 -wait

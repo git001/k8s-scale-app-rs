@@ -199,13 +199,18 @@ async fn build_client(extra_ca_bundle: Option<&Path>) -> Result<Client> {
             count = extra_certs.len(),
             "merging extra CA certificates into trust store"
         );
-        match config.root_cert.as_mut() {
-            Some(existing) => existing.extend(extra_certs),
-            None => config.root_cert = Some(extra_certs),
-        }
+        merge_extra_certs(&mut config, extra_certs);
     }
 
     Client::try_from(config).context("failed to build Kubernetes client")
+}
+
+/// Adds the extra CA certificates to those of the config, which stay trusted.
+fn merge_extra_certs(config: &mut Config, extra_certs: Vec<Vec<u8>>) {
+    match config.root_cert.as_mut() {
+        Some(existing) => existing.extend(extra_certs),
+        None => config.root_cert = Some(extra_certs),
+    }
 }
 
 fn parse_pem_certificates(data: &[u8]) -> Result<Vec<Vec<u8>>> {
@@ -223,6 +228,26 @@ mod tests {
 
     fn make_pem(tag: &str, content: Vec<u8>) -> String {
         pem::encode(&pem::Pem::new(tag, content))
+    }
+
+    fn config_with_certs(root_cert: Option<Vec<Vec<u8>>>) -> Config {
+        let mut config = Config::new("http://127.0.0.1:1".parse().unwrap());
+        config.root_cert = root_cert;
+        config
+    }
+
+    #[test]
+    fn merge_extra_certs_keeps_the_existing_ca() {
+        let mut config = config_with_certs(Some(vec![vec![1]]));
+        merge_extra_certs(&mut config, vec![vec![2], vec![3]]);
+        assert_eq!(config.root_cert, Some(vec![vec![1], vec![2], vec![3]]));
+    }
+
+    #[test]
+    fn merge_extra_certs_without_an_existing_ca() {
+        let mut config = config_with_certs(None);
+        merge_extra_certs(&mut config, vec![vec![2]]);
+        assert_eq!(config.root_cert, Some(vec![vec![2]]));
     }
 
     #[test]

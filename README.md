@@ -15,10 +15,10 @@ Introductory write-up: [k8s-scale-app-rs: Scale or Restart a Kubernetes Deployme
 
 | Tool         | Version                                                                   |
 |--------------|---------------------------------------------------------------------------|
-| Rust         | 1.95 (edition 2024)                                                       |
-| Container    | UBI 10 micro runtime (default) or UBI 10 minimal (`-debug`), `rust:1.95` builder |
+| Rust         | 1.99 (edition 2024)                                                       |
+| Container    | UBI 10 micro runtime (default) or UBI 10 minimal (`-debug`), `rust:1.99` builder |
 | Kubernetes   | API ≥ v1.30 (k8s-openapi `v1_34` feature)                                 |
-| Helm         | v3                                                                        |
+| Helm         | v4                                                                        |
 | kustomize    | ≥ v5 (`kubectl kustomize` works)                                          |
 | cosign       | v2 (only for verifying published images / attestations)                   |
 
@@ -76,6 +76,19 @@ cargo test --release
 # With cluster (all tests):
 KUBECONFIG=~/.kube/config cargo test --release
 ```
+
+### VTest2 tests and coverage
+
+The [VTest2](https://code.vinyl-cache.org/vtest/VTest2) tests in [tests/vtest/](tests/vtest/) run the real binary against a fake Kubernetes API server and check the requests it sends. They need no cluster, but the `vtest` binary. See [tests/vtest/README.md](tests/vtest/README.md).
+
+```bash
+cargo build
+tests/vtest/run.sh                     # VTest2 tests only
+tests/vtest/run.sh --coverage          # unit + Rust integration + VTest2, combined report
+tests/vtest/run.sh --coverage --html   # the same as an HTML report
+```
+
+Coverage needs `cargo-llvm-cov` and the `llvm-tools` rustup component. A coverage run ignores `KUBECONFIG` unless `CLUSTER_TEST=1` is set.
 
 ## Build the container image
 
