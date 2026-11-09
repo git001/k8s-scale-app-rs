@@ -1,8 +1,8 @@
 # k8s-scale-app-rs
 
-Small Rust CLI that either **scales** a Kubernetes Deployment to a fixed replica count **or** triggers a **rolling restart** on it, via the Kubernetes API. Designed to run as a `CronJob`, deployable via Helm **or** Kustomize.
+Small Rust CLI that either **scales** a Kubernetes Deployment or StatefulSet to a fixed replica count **or** triggers a **rolling restart** on it, via the Kubernetes API. Designed to run as a `CronJob`, deployable via Helm **or** Kustomize. With the Helm chart it can also be [triggered over HTTPS through vigil](#trigger-over-https-with-vigil).
 
-- Scale mode uses the `deployments/scale` subresource → minimal RBAC footprint
+- Scale mode uses the `scale` subresource → minimal RBAC footprint
 - Restart mode patches `spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"]` — same mechanism as `kubectl rollout restart`
 - Configuration via environment variables, overridable by CLI flags
 - Optional server-side dry-run
@@ -10,6 +10,8 @@ Small Rust CLI that either **scales** a Kubernetes Deployment to a fixed replica
 - Namespace is read at runtime from the pod via the Downward API — the CronJob always acts on a deployment in its own namespace
 
 Introductory write-up: [k8s-scale-app-rs: Scale or Restart a Kubernetes Deployment from a CronJob](https://blog.none.at/blog/2026/2026-07-06-k8s-scale-app-rs/) on blog.none.at.
+
+Follow-up on the HTTPS trigger, the Gateway API and StatefulSets: [k8s-scale-app-rs 1.1: Trigger Scale and Restart Jobs over HTTPS with vigil, mTLS and the Gateway API](https://blog.none.at/blog/2026/2026-11-09-k8s-scale-app-rs/).
 
 ## Requirements
 
@@ -27,19 +29,23 @@ Introductory write-up: [k8s-scale-app-rs: Scale or Restart a Kubernetes Deployme
 Two subcommands, sharing the same common arguments:
 
 ```
-k8s-scale-app-rs scale   --deployment <NAME> --replicas <N> [--dry-run] [--extra-ca-bundle <PATH>]
-k8s-scale-app-rs restart --deployment <NAME>                [--dry-run] [--extra-ca-bundle <PATH>]
+k8s-scale-app-rs scale   --name <NAME> [--kind <KIND>] --replicas <N> [--dry-run] [--extra-ca-bundle <PATH>]
+k8s-scale-app-rs restart --name <NAME> [--kind <KIND>]                [--dry-run] [--extra-ca-bundle <PATH>]
 ```
 
 Arguments and environment variables:
 
 | Flag                  | ENV                          | Subcommand(s)   | Required | Description                                                  |
 |-----------------------|------------------------------|-----------------|----------|--------------------------------------------------------------|
-| `--deployment`        | `K8S_SCALE_DEPLOYMENT`       | scale, restart  | yes      | Deployment name                                              |
+| `--name`              | `K8S_SCALE_NAME`             | scale, restart  | yes      | Name of the workload                                         |
+| `--deployment`        | `K8S_SCALE_DEPLOYMENT`       | scale, restart  | instead of `--name` | Same as `--name`, for existing configurations     |
+| `--kind`              | `K8S_SCALE_KIND`             | scale, restart  | no       | `deployment` (default) or `statefulset`                      |
 | `--namespace`         | `K8S_SCALE_NAMESPACE`        | scale, restart  | yes      | Namespace (set by Downward API in the CronJob)               |
 | `--replicas`          | `K8S_SCALE_REPLICAS`         | scale           | yes      | Target replica count (≥ 0)                                   |
 | `--dry-run`           | `K8S_SCALE_DRY_RUN`          | scale, restart  | no       | Server-side dry-run; no changes persisted                    |
 | `--extra-ca-bundle`   | `K8S_SCALE_EXTRA_CA_BUNDLE`  | scale, restart  | no       | Path to PEM file with additional CAs (chain is merged)       |
+
+Unknown settings stop the tool with exit code 2, so a typo cannot go unnoticed: `K8S_SCALE_DRY_RUNN=true` would otherwise turn a dry run into a real change. This covers flags and every `K8S_SCALE_*` variable that is not in the table. The variables Kubernetes sets for a Service, such as `K8S_SCALE_APP_RS_SERVICE_HOST`, are allowed.
 
 `RUST_LOG` controls the log level (`info`, `debug`, …).
 
@@ -90,6 +96,18 @@ tests/vtest/run.sh --coverage --html   # the same as an HTML report
 
 Coverage needs `cargo-llvm-cov` and the `llvm-tools` rustup component. A coverage run ignores `KUBECONFIG` unless `CLUSTER_TEST=1` is set.
 
+### Chart values
+
+[tests/chart/run.sh](tests/chart/run.sh) needs Helm, but no cluster. It renders the shipped values files and checks that unknown keys and wrong values are rejected.
+
+### vigil mode on a cluster
+
+[tests/k8s/vigil.sh](tests/k8s/vigil.sh) installs the chart in vigil mode and triggers jobs over HTTPS. It creates and removes the namespace `k8s-scale-vigil-test`.
+
+```bash
+KUBECONFIG=~/.kube/test-cluster.yml tests/k8s/vigil.sh
+```
+
 ## Build the container image
 
 Two variants live side by side. Both share the same builder stage but differ in the runtime base:
@@ -121,6 +139,8 @@ helm install scale-dev chart \
 
 Values layering: `chart/values.yaml` is always loaded as the default; `-f values-{stage}.yaml` overrides individual keys.
 
+[chart/values.schema.json](chart/values.schema.json) rejects unknown keys and wrong values, for example `at '/target': additional properties 'nmae' not allowed`. `helm --skip-schema-validation` turns this off.
+
 Per-stage example overrides:
 
 - [chart/values-dev.yaml](chart/values-dev.yaml)
@@ -132,7 +152,8 @@ Important toggles in `values.yaml`:
 | Key                         | Description                                                                  |
 |-----------------------------|------------------------------------------------------------------------------|
 | `mode`                      | `scale` (default) or `restart` — selects the subcommand                       |
-| `target.deployment`         | Required — name of the deployment to act on                                  |
+| `target.name`               | Required — name of the workload to act on (older name: `target.deployment`)  |
+| `target.kind`               | `deployment` (default) or `statefulset`; RBAC covers only the kinds in use   |
 | `target.replicas`           | Target replica count (only used when `mode: scale`)                          |
 | `target.dryRun`             | Dry-run mode                                                                 |
 | `schedule`                  | Cron schedule of the CronJob                                                 |
@@ -141,6 +162,75 @@ Important toggles in `values.yaml`:
 | `extraCA.enabled`           | Mount an additional CA chain into the trust store                            |
 | `extraCA.existingConfigMap` | Reference an existing ConfigMap (alternative: inline `extraCA.bundle`)       |
 | `image.tag`                 | Container tag (empty → `Chart.AppVersion`)                                   |
+| `vigil.enabled`             | Run jobs in one pod with vigil instead of the CronJob, see below             |
+
+## Trigger over HTTPS with vigil
+
+With `vigil.enabled: true` the chart renders a Deployment with one pod, a Service and the layers of [vigil](https://github.com/git001/vigil-rs) instead of the CronJob. Jobs have fixed values, run when they are triggered over HTTPS, and optionally on a schedule. An init container copies `vigild` from `ghcr.io/git001/vigil-rs:4` into the pod, so the application image stays as it is. Available with Helm only.
+
+```yaml
+target:
+  name: my-app
+serviceAccount:
+  create: true
+vigil:
+  enabled: true
+  jobs:
+    scale-up:   { mode: scale, replicas: 3 }
+    scale-down: { mode: scale, replicas: 0, schedule: "0 19 * * 1-5", scheduleTz: Europe/Vienna }
+    restart-db: { mode: restart, kind: statefulset, name: db }
+  identities:
+    ci:  { access: write, basic: { existingSecret: scale-trigger } }
+    ops: { access: write, tls: true }
+  tls:
+    existingSecret: scale-server-tls    # kubernetes.io/tls, e.g. from cert-manager
+    clientCA:
+      existingSecret: scale-client-ca   # key ca.crt, only for tls identities
+```
+
+Secrets are not created by the chart:
+
+```bash
+kubectl create secret generic scale-trigger --from-literal=password-hash="$(openssl passwd -6)"
+kubectl create secret generic scale-client-ca --from-file=ca.crt=client-ca.pem
+```
+
+Trigger a job, with Basic Auth or a client certificate:
+
+```bash
+curl --cacert ca.pem -u ci:"$PASSWORD" -H 'Content-Type: application/json' \
+  -d '{"action":"start","services":["scale-up"]}' https://my-host:8443/v1/services
+
+curl --cacert ca.pem --cert client.pem --key client-key.pem -H 'Content-Type: application/json' \
+  -d '{"action":"start","services":["scale-up"]}' https://my-host:8443/v1/services
+```
+
+Good to know:
+
+- **A failed job also answers HTTP `200`.** The response ends when the run has ended; check `result.status` for `done` or `error`. `curl --fail` is not enough.
+- **The trigger takes no parameters.** A job has fixed values, so define one job per replica count.
+- **`write` covers every job** of the release, including stopping them and `replan`. vigil has no per-service permissions.
+- **Keep one replica.** Scheduled jobs run once per pod, and the target must not be the vigil Deployment itself; the chart rejects that.
+- Runs missed while the pod restarts are not caught up.
+
+### Exposing the API
+
+| Flag | Creates | Basic Auth | Client certificates |
+|------|---------|------------|---------------------|
+| Service only (default) | `ClusterIP` Service, `vigil.service.type` changes it | yes | yes |
+| `vigil.openshift.enabled` | OpenShift `Route`, also leaves `runAsUser` to the namespace | yes | only with `termination: passthrough` (default) |
+| `vigil.gatewayApi.enabled`, `routeType: tls` | `TLSRoute`, TLS passes through to vigild | yes | yes |
+| `vigil.gatewayApi.enabled`, `routeType: http` | `HTTPRoute` and `BackendTLSPolicy` | yes | no: TLS ends at the Gateway |
+
+`vigil.gatewayApi` always needs `parentRefs`. `routeType: tls` needs a TLS listener with `mode: Passthrough` and `hostnames`, because the Gateway routes by the TLS server name. `routeType: http` needs `backendTLS.hostname` (a name in the server certificate) and `backendTLS.caConfigMap` (a ConfigMap with its CA under `ca.crt`), as vigild only speaks HTTPS.
+
+Tested with [tests/k8s/vigil-gateway.sh](tests/k8s/vigil-gateway.sh) through a port-forward to the Gateway's Service, without a cloud load balancer:
+
+| Gateway | `routeType: tls` | `routeType: http` |
+|---------|------------------|-------------------|
+| Envoy Gateway v1.10.0 | Basic Auth, client certificates | Basic Auth |
+| Istio 1.31.4 | Basic Auth, client certificates | Basic Auth |
+| HAProxy Unified Gateway v1.0.10 | Basic Auth, client certificates | **no**: answers 502, it does not apply `BackendTLSPolicy` |
 
 ## Deploy with Kustomize
 
@@ -158,6 +248,7 @@ kustomize/
 ├── components/
 │   ├── serviceaccount/           # opt-in: creates the "deploy" SA
 │   ├── rbac/                     # opt-in: Role + RoleBinding (covers both scale and restart)
+│   ├── rbac-statefulset/         # opt-in: the same for StatefulSets, with K8S_SCALE_KIND=statefulset
 │   └── extra-ca/                 # opt-in: mounts the extra-ca-bundle ConfigMap
 └── overlays/{dev,preprod,prod}/  # patch schedule, image tag, env
 ```

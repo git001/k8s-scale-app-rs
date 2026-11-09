@@ -1,0 +1,45 @@
+# Values of tests/k8s/vigil-gateway.sh. Image and routeType come from --set.
+target:
+  name: web
+
+serviceAccount:
+  name: deploy
+  create: true
+
+image:
+  pullPolicy: Always
+
+vigil:
+  enabled: true
+  watchLayers: ""
+  jobs:
+    scale-two:
+      mode: scale
+      replicas: 2
+    scale-three:
+      mode: scale
+      replicas: 3
+    scale-four:
+      mode: scale
+      replicas: 4
+  identities:
+    ci:
+      access: write
+      basic:
+        existingSecret: gateway-test-hash
+    ops:
+      access: write
+      tls: true
+  tls:
+    existingSecret: gateway-test-server-tls
+    clientCA:
+      existingSecret: gateway-test-client-ca
+  gatewayApi:
+    enabled: true
+    parentRefs:
+      - name: g
+    hostnames:
+      - scale.example.test
+    backendTLS:
+      hostname: scale.example.test
+      caConfigMap: gateway-test-backend-ca

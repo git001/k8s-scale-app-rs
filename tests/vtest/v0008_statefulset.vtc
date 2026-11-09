@@ -1,0 +1,42 @@
+vtest "--kind statefulset: scale and restart patch the StatefulSet; a 404 names the kind"
+
+server s1 {
+	rxreq
+	expect req.method == PATCH
+	expect req.url ~ "^/apis/apps/v1/namespaces/demo/statefulsets/db/scale[?]"
+	expect req.http.content-type == "application/merge-patch+json"
+	expect req.body == {{"spec":{"replicas":3}}}
+	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/scale-3.json
+	close
+	accept
+	rxreq
+	expect req.method == PATCH
+	expect req.url ~ "^/apis/apps/v1/namespaces/demo/statefulsets/db[?]"
+	expect req.body ~ "kubectl.kubernetes.io/restartedAt.:.20[0-9][0-9]-"
+	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/statefulset.json
+	close
+	accept
+	rxreq
+	expect req.url ~ "^/apis/apps/v1/namespaces/demo/statefulsets/db[?]"
+	txresp -status 404 -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/not-found.json
+} -start
+
+# The server listens on a free port; the kubeconfig is the static fixture with that port.
+shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir}/kubeconfig}
+
+shell -match {scale request completed kind=statefulset name=db namespace=demo replicas=3} {
+	KUBECONFIG=${tmpdir}/kubeconfig \
+	${k8s_scale} scale --kind statefulset --name db --namespace demo --replicas 3
+}
+
+shell -match {restart request completed kind=statefulset name=db namespace=demo} {
+	KUBECONFIG=${tmpdir}/kubeconfig \
+	${k8s_scale} restart --kind statefulset --name db --namespace demo
+}
+
+shell -exit 1 -match {failed to patch statefulset demo/db} {
+	KUBECONFIG=${tmpdir}/kubeconfig \
+	${k8s_scale} restart --kind statefulset --name db --namespace demo
+}
+
+server s1 -wait

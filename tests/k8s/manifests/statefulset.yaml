@@ -1,0 +1,19 @@
+# The StatefulSet of tests/k8s/vigil.sh.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+        - name: db
+          image: registry.k8s.io/pause:3.10

@@ -6,13 +6,15 @@ metadata:
   labels:
     {{- include "k8s-scale-app-rs.labels" . | nindent 4 }}
 rules:
+  {{- range $kind := splitList "," (include "k8s-scale-app-rs.targetKinds" .) }}
   # get:   used in both modes
   # patch: needed by the "restart" mode to update spec.template.metadata.annotations
   - apiGroups: ["apps"]
-    resources: ["deployments"]
+    resources: ["{{ $kind }}s"]
     verbs: ["get", "patch"]
   # scale subresource: used by the "scale" mode
   - apiGroups: ["apps"]
-    resources: ["deployments/scale"]
+    resources: ["{{ $kind }}s/scale"]
     verbs: ["get", "patch", "update"]
+  {{- end }}
 {{- end }}

@@ -3,14 +3,18 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use clap::{Args, Parser, Subcommand};
-use k8s_openapi::api::apps::v1::Deployment;
+use clap::error::ErrorKind;
+use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
+use k8s_openapi::NamespaceResourceScope;
+use k8s_openapi::api::apps::v1::{Deployment, StatefulSet};
+use k8s_openapi::api::autoscaling::v1::Scale;
 use kube::{
-    Client, Config,
+    Client, Config, Resource,
     api::{Api, Patch, PatchParams},
 };
 use mimalloc::MiMalloc;
-use serde_json::json;
+use serde::de::DeserializeOwned;
+use serde_json::{Value, json};
 use tracing::info;
 
 #[global_allocator]
@@ -31,19 +35,50 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Set the Deployment's replica count to a fixed value.
+    /// Set the workload's replica count to a fixed value.
     Scale(ScaleArgs),
     /// Trigger a rolling restart by patching the pod template's `restartedAt` annotation.
     Restart(RestartArgs),
 }
 
-#[derive(Args, Debug)]
-struct CommonArgs {
-    /// Deployment name
-    #[arg(long, env = "K8S_SCALE_DEPLOYMENT")]
-    deployment: String,
+/// The kinds of workload the CLI can act on.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Kind {
+    Deployment,
+    #[value(name = "statefulset")]
+    StatefulSet,
+}
 
-    /// Namespace of the deployment
+impl Kind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Kind::Deployment => "deployment",
+            Kind::StatefulSet => "statefulset",
+        }
+    }
+}
+
+#[derive(Args, Debug)]
+#[command(group(
+    ArgGroup::new("workload")
+        .required(true)
+        .multiple(false)
+        .args(["name", "deployment"])
+))]
+struct CommonArgs {
+    /// Name of the workload
+    #[arg(long, env = "K8S_SCALE_NAME")]
+    name: Option<String>,
+
+    /// Same as --name, for existing configurations
+    #[arg(long, env = "K8S_SCALE_DEPLOYMENT")]
+    deployment: Option<String>,
+
+    /// Kind of the workload
+    #[arg(long, env = "K8S_SCALE_KIND", value_enum, default_value_t = Kind::Deployment)]
+    kind: Kind,
+
+    /// Namespace of the workload
     #[arg(long, env = "K8S_SCALE_NAMESPACE")]
     namespace: String,
 
@@ -55,6 +90,15 @@ struct CommonArgs {
     /// merged with the in-cluster / kubeconfig CA chain
     #[arg(long, env = "K8S_SCALE_EXTRA_CA_BUNDLE")]
     extra_ca_bundle: Option<PathBuf>,
+}
+
+impl CommonArgs {
+    fn workload_name(&self) -> &str {
+        self.name
+            .as_deref()
+            .or(self.deployment.as_deref())
+            .expect("clap requires --name or --deployment")
+    }
 }
 
 #[derive(Args, Debug)]
@@ -91,11 +135,66 @@ async fn main() -> Result<()> {
         .install_default()
         .map_err(|_| anyhow::anyhow!("failed to install rustls ring crypto provider"))?;
 
-    let cli = Cli::parse();
+    let cli = parse_cli();
     match cli.command {
         Command::Scale(args) => run_scale(args).await,
         Command::Restart(args) => run_restart(args).await,
     }
+}
+
+/// Parses the command line and refuses unknown `K8S_SCALE_*` variables. They
+/// come first, because `K8S_SCALE_REPLICA` is the cause of a missing `--replicas`.
+/// `--help` and `--version` still work.
+fn parse_cli() -> Cli {
+    let parsed = Cli::try_parse();
+    if !parsed.as_ref().is_err_and(|e| !e.use_stderr()) {
+        reject_unknown_env();
+    }
+    parsed.unwrap_or_else(|e| e.exit())
+}
+
+fn reject_unknown_env() {
+    let mut command = Cli::command();
+    let mut known: Vec<String> = command
+        .get_subcommands()
+        .flat_map(|subcommand| subcommand.get_arguments())
+        .filter_map(|arg| arg.get_env())
+        .map(|env| env.to_string_lossy().into_owned())
+        .collect();
+    known.sort();
+    known.dedup();
+
+    let names = std::env::vars_os().map(|(name, _)| name.to_string_lossy().into_owned());
+    let unknown = unknown_env_vars(names, &known);
+    if !unknown.is_empty() {
+        let message = format!(
+            "unknown environment variable: {}\n\nKnown: {}",
+            unknown.join(", "),
+            known.join(", ")
+        );
+        command.error(ErrorKind::UnknownArgument, message).exit();
+    }
+}
+
+/// The `K8S_SCALE_*` names that are not in `known`. A typo must not pass:
+/// `K8S_SCALE_DRY_RUNN=true` would turn a dry run into a real change.
+fn unknown_env_vars(names: impl Iterator<Item = String>, known: &[String]) -> Vec<String> {
+    let mut unknown: Vec<String> = names
+        .filter(|name| name.starts_with("K8S_SCALE_"))
+        .filter(|name| !known.contains(name) && !is_service_link(name))
+        .collect();
+    unknown.sort();
+    unknown
+}
+
+/// Kubernetes sets `<SERVICE>_SERVICE_HOST`, `<SERVICE>_PORT_8443_TCP` and so on
+/// for each Service in the namespace, so a Service named `k8s-scale-app-rs`
+/// produces such names. No variable of this tool contains `_PORT`.
+fn is_service_link(name: &str) -> bool {
+    name.ends_with("_SERVICE_HOST")
+        || name.contains("_SERVICE_PORT")
+        || name.ends_with("_PORT")
+        || name.contains("_PORT_")
 }
 
 /// Colours only on a terminal: in a pod, the codes would end up in the logs.
@@ -111,24 +210,22 @@ async fn run_scale(args: ScaleArgs) -> Result<()> {
         bail!("--replicas must be >= 0, got {}", replicas);
     }
 
-    let api = deployment_api(&common).await?;
+    let name = common.workload_name();
+    let client = build_client(common.extra_ca_bundle.as_deref()).await?;
     let pp = patch_params(common.dry_run);
     let patch = json!({ "spec": { "replicas": replicas } });
 
-    let scale = api
-        .patch_scale(&common.deployment, &pp, &Patch::Merge(&patch))
-        .await
-        .with_context(|| {
-            format!(
-                "failed to patch scale for {}/{}",
-                common.namespace, common.deployment
-            )
-        })?;
+    let scale = match common.kind {
+        Kind::Deployment => patch_scale::<Deployment>(client, &common, &pp, &patch).await,
+        Kind::StatefulSet => patch_scale::<StatefulSet>(client, &common, &pp, &patch).await,
+    }
+    .with_context(|| format!("failed to patch scale for {}/{name}", common.namespace))?;
 
     let actual = scale.spec.and_then(|s| s.replicas).unwrap_or(replicas);
 
     info!(
-        deployment = %common.deployment,
+        kind = %common.kind.as_str(),
+        name = %name,
         namespace = %common.namespace,
         replicas = actual,
         dry_run = common.dry_run,
@@ -141,7 +238,8 @@ async fn run_scale(args: ScaleArgs) -> Result<()> {
 async fn run_restart(args: RestartArgs) -> Result<()> {
     let RestartArgs { common } = args;
 
-    let api = deployment_api(&common).await?;
+    let name = common.workload_name();
+    let client = build_client(common.extra_ca_bundle.as_deref()).await?;
     let pp = patch_params(common.dry_run);
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -157,17 +255,21 @@ async fn run_restart(args: RestartArgs) -> Result<()> {
         }
     });
 
-    api.patch(&common.deployment, &pp, &Patch::Merge(&patch))
-        .await
-        .with_context(|| {
-            format!(
-                "failed to patch deployment {}/{}",
-                common.namespace, common.deployment
-            )
-        })?;
+    match common.kind {
+        Kind::Deployment => patch_workload::<Deployment>(client, &common, &pp, &patch).await,
+        Kind::StatefulSet => patch_workload::<StatefulSet>(client, &common, &pp, &patch).await,
+    }
+    .with_context(|| {
+        format!(
+            "failed to patch {} {}/{name}",
+            common.kind.as_str(),
+            common.namespace
+        )
+    })?;
 
     info!(
-        deployment = %common.deployment,
+        kind = %common.kind.as_str(),
+        name = %name,
         namespace = %common.namespace,
         restarted_at = %now,
         dry_run = common.dry_run,
@@ -177,9 +279,35 @@ async fn run_restart(args: RestartArgs) -> Result<()> {
     Ok(())
 }
 
-async fn deployment_api(common: &CommonArgs) -> Result<Api<Deployment>> {
-    let client = build_client(common.extra_ca_bundle.as_deref()).await?;
-    Ok(Api::namespaced(client, &common.namespace))
+async fn patch_scale<K>(
+    client: Client,
+    common: &CommonArgs,
+    pp: &PatchParams,
+    patch: &Value,
+) -> kube::Result<Scale>
+where
+    K: Resource<Scope = NamespaceResourceScope> + Clone + DeserializeOwned + std::fmt::Debug,
+    K::DynamicType: Default,
+{
+    Api::<K>::namespaced(client, &common.namespace)
+        .patch_scale(common.workload_name(), pp, &Patch::Merge(patch))
+        .await
+}
+
+async fn patch_workload<K>(
+    client: Client,
+    common: &CommonArgs,
+    pp: &PatchParams,
+    patch: &Value,
+) -> kube::Result<()>
+where
+    K: Resource<Scope = NamespaceResourceScope> + Clone + DeserializeOwned + std::fmt::Debug,
+    K::DynamicType: Default,
+{
+    Api::<K>::namespaced(client, &common.namespace)
+        .patch(common.workload_name(), pp, &Patch::Merge(patch))
+        .await
+        .map(|_| ())
 }
 
 fn patch_params(dry_run: bool) -> PatchParams {

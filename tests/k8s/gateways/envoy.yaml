@@ -1,0 +1,51 @@
+# Envoy Gateway with a ClusterIP Service, so that no cloud load balancer is created.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: eg
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: no-load-balancer
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: ClusterIP
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: g
+spec:
+  gatewayClassName: eg
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: no-load-balancer
+  listeners:
+    - name: https
+      port: 31443
+      protocol: HTTPS
+      hostname: scale.example.test
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: gateway-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: tls
+      port: 31444
+      protocol: TLS
+      hostname: scale.example.test
+      tls:
+        mode: Passthrough
+      allowedRoutes:
+        namespaces:
+          from: Same

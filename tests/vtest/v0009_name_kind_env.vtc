@@ -1,0 +1,28 @@
+vtest "K8S_SCALE_NAME and K8S_SCALE_KIND; --deployment stays an alias of --name"
+
+server s1 {
+	rxreq
+	expect req.url ~ "^/apis/apps/v1/namespaces/demo/statefulsets/db/scale[?]"
+	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/scale-3.json
+	close
+	accept
+	rxreq
+	expect req.url ~ "^/apis/apps/v1/namespaces/demo/deployments/web/scale[?]"
+	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/scale-3.json
+} -start
+
+# The server listens on a free port; the kubeconfig is the static fixture with that port.
+shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir}/kubeconfig}
+
+shell -match {kind=statefulset name=db namespace=demo} {
+	KUBECONFIG=${tmpdir}/kubeconfig \
+	K8S_SCALE_NAME=db K8S_SCALE_KIND=statefulset K8S_SCALE_NAMESPACE=demo K8S_SCALE_REPLICAS=3 \
+	${k8s_scale} scale
+}
+
+shell -match {kind=deployment name=web namespace=demo} {
+	KUBECONFIG=${tmpdir}/kubeconfig \
+	${k8s_scale} scale --deployment web --namespace demo --replicas 3
+}
+
+server s1 -wait

@@ -1,0 +1,82 @@
+{{- if .Values.vigil.enabled }}
+{{- if not .Values.vigil.jobs }}
+{{- fail "vigil.jobs must define at least one job" }}
+{{- end }}
+{{- if not .Values.vigil.identities }}
+{{- fail "vigil.identities must define at least one identity, otherwise nobody can trigger a job" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-scale-app-rs.fullname" . }}-vigil
+  labels:
+    {{- include "k8s-scale-app-rs.labels" . | nindent 4 }}
+data:
+  001-jobs.yaml: |
+    services:
+    {{- range $name, $job := .Values.vigil.jobs }}
+    {{- if not (has $job.mode (list "scale" "restart")) }}
+    {{- fail (printf "vigil.jobs.%s.mode must be \"scale\" or \"restart\", got %v" $name $job.mode) }}
+    {{- end }}
+    {{- if and (eq $job.mode "scale") (not (hasKey $job "replicas")) }}
+    {{- fail (printf "vigil.jobs.%s.replicas is required with mode scale" $name) }}
+    {{- end }}
+    {{- if and (eq $job.mode "restart") (hasKey $job "replicas") }}
+    {{- fail (printf "vigil.jobs.%s.replicas has no effect with mode restart, remove it" $name) }}
+    {{- end }}
+    {{- if and $job.scheduleTz (not $job.schedule) }}
+    {{- fail (printf "vigil.jobs.%s.scheduleTz has no effect without schedule, remove it" $name) }}
+    {{- end }}
+    {{- $targetName := $job.name | default (include "k8s-scale-app-rs.targetName" $) }}
+    {{- $targetKind := $job.kind | default $.Values.target.kind }}
+    {{- if not $targetName }}
+    {{- fail (printf "vigil.jobs.%s needs a name, or target.name must be set" $name) }}
+    {{- end }}
+    {{- if and (eq $targetKind "deployment") (eq $targetName (include "k8s-scale-app-rs.fullname" $)) }}
+    {{- fail (printf "vigil.jobs.%s must not act on this release's own Deployment: scaling it to 0 would also stop vigil" $name) }}
+    {{- end }}
+      {{ $name }}:
+        override: replace
+        type: oneshot
+        # Without a schedule the job runs only when it is triggered, not at every pod start.
+        startup: {{ if $job.schedule }}enabled{{ else }}disabled{{ end }}
+        on-failure: ignore
+        run-timeout: {{ $job.runTimeout | default $.Values.vigil.runTimeout | quote }}
+        {{- with $job.schedule }}
+        schedule: {{ . | quote }}
+        {{- end }}
+        {{- with $job.scheduleTz }}
+        schedule-tz: {{ . | quote }}
+        {{- end }}
+        command: /usr/local/bin/k8s-scale-app-rs {{ $job.mode }}
+        # A service does not inherit the environment of vigild.
+        pass-env-glob: [KUBERNETES_*, K8S_SCALE_*, RUST_LOG]
+        environment:
+          K8S_SCALE_NAME: {{ $targetName | quote }}
+          K8S_SCALE_KIND: {{ $targetKind | quote }}
+          K8S_SCALE_DRY_RUN: {{ $job.dryRun | default false | quote }}
+          {{- if eq $job.mode "scale" }}
+          K8S_SCALE_REPLICAS: {{ $job.replicas | quote }}
+          {{- end }}
+    {{- end }}
+  002-identities.yaml: |
+    identities:
+    {{- range $name, $identity := .Values.vigil.identities }}
+    {{- if and (not $identity.basic) (not $identity.tls) }}
+    {{- fail (printf "vigil.identities.%s needs basic or tls" $name) }}
+    {{- end }}
+    {{- if and $identity.tls (not $.Values.vigil.tls.clientCA.existingSecret) }}
+    {{- fail (printf "vigil.identities.%s uses tls, which needs vigil.tls.clientCA.existingSecret" $name) }}
+    {{- end }}
+      {{ $name }}:
+        access: {{ required (printf "vigil.identities.%s.access is required" $name) $identity.access }}
+        {{- if $identity.basic }}
+        basic:
+          password-hash-file: /etc/vigil/identities/{{ $name }}/password-hash
+        {{- end }}
+        {{- if $identity.tls }}
+        tls:
+          ca: /etc/vigil/client-ca/ca.crt
+        {{- end }}
+    {{- end }}
+{{- end }}

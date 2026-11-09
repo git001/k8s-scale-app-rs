@@ -19,10 +19,14 @@ backoffLimit: 1
 #   restart -> patch the pod template's `restartedAt` annotation
 mode: scale
 
-# Target Deployment. The namespace is taken at runtime from the pod's own
+# Target workload. The namespace is taken at runtime from the pod's own
 # metadata.namespace via the Downward API, so the CronJob always acts on
-# a deployment in its own namespace.
+# a workload in its own namespace.
 target:
+  name: ""
+  # deployment or statefulset. RBAC covers only the kinds in use.
+  kind: deployment
+  # Older name of target.name.
   deployment: ""
   # replicas is only used when mode == "scale"
   replicas: 1
@@ -79,6 +83,122 @@ extraCA:
 
 # RUST_LOG value for the container
 logLevel: info
+
+# vigil mode: instead of the CronJob, one pod runs vigild, which starts the
+# jobs below when they are triggered over HTTPS or by their schedule.
+# See "Trigger over HTTPS with vigil" in the README.
+vigil:
+  enabled: false
+
+  # vigild is copied from this image by an init container. The tag follows
+  # vigil 4.x, so "Always" brings a new 4.x with the next pod start.
+  image:
+    repository: ghcr.io/git001/vigil-rs
+    tag: "4"
+    pullPolicy: Always
+
+  # A job is one action with fixed values: the trigger cannot pass parameters.
+  #   mode:       scale or restart (required)
+  #   replicas:   required with mode scale, an error with mode restart
+  #   name:       default target.name
+  #   kind:       default target.kind
+  #   dryRun:     default false
+  #   runTimeout: default vigil.runTimeout
+  #   schedule:   cron pattern, also runs the job at these times (optional)
+  #   scheduleTz: time zone of the schedule, default UTC; an error without schedule
+  jobs: {}
+  #  scale-up:
+  #    mode: scale
+  #    replicas: 3
+  #  scale-down:
+  #    mode: scale
+  #    replicas: 0
+  #    schedule: "0 19 * * 1-5"
+  #    scheduleTz: Europe/Vienna
+  #  restart:
+  #    mode: restart
+
+  # Who may call the API. Triggering a job needs "write", which covers every
+  # job of this release, and also stopping them and replan.
+  #   access: metrics, read, write or admin (required)
+  #   basic:  existingSecret holds a SHA-512 crypt hash ("openssl passwd -6"),
+  #           under the key "password-hash" unless "key" says otherwise
+  #   tls:    true accepts client certificates of vigil.tls.clientCA
+  identities: {}
+  #  ci:
+  #    access: write
+  #    basic:
+  #      existingSecret: scale-trigger
+  #  ops:
+  #    access: write
+  #    tls: true
+
+  tls:
+    # kubernetes.io/tls Secret with the server certificate (required),
+    # e.g. the secretName of a cert-manager Certificate.
+    existingSecret: ""
+    # Secret with the CA of the client certificates, for mTLS.
+    clientCA:
+      existingSecret: ""
+      key: ca.crt
+    # Access without an identity: "open" (health and API docs only) or
+    # "metrics" (also /v1/metrics).
+    anonymousAccess: open
+
+  service:
+    type: ClusterIP
+    port: 8443
+
+  # OpenShift: creates a Route and leaves the UID to the namespace's range
+  # (no runAsUser in the vigil pod).
+  openshift:
+    enabled: false
+    route:
+      # Empty: the router generates a host name.
+      host: ""
+      # passthrough: TLS ends at vigild, so Basic Auth and client certificates
+      # both work.
+      # reencrypt: TLS ends at the router, so client certificates do not reach
+      # vigild; set destinationCACertificate to the CA of the server certificate.
+      termination: passthrough
+      destinationCACertificate: ""
+      annotations: {}
+
+  # Gateway API. Needs the Gateway API CRDs and a Gateway.
+  gatewayApi:
+    enabled: false
+    # http: an HTTPRoute and a BackendTLSPolicy; TLS ends at the Gateway, so
+    #       client certificates do not reach vigild. Needs a controller that
+    #       supports BackendTLSPolicy and an HTTPS listener.
+    # tls:  a TLSRoute; TLS ends at vigild, so Basic Auth and client
+    #       certificates both work. Needs a TLS listener with mode Passthrough,
+    #       and hostnames.
+    routeType: http
+    # The Gateway(s), e.g. [{name: my-gateway, namespace: gateways, sectionName: tls}]
+    parentRefs: []
+    hostnames: []
+    # Only with routeType http:
+    path: /
+    backendTLS:
+      # A name in the server certificate, which the Gateway verifies.
+      hostname: ""
+      # ConfigMap with the CA of the server certificate under the key ca.crt.
+      caConfigMap: ""
+
+  # Time limit of a job run, unless the job sets its own.
+  runTimeout: 2m
+
+  # How often vigild looks for changed jobs, identities and rotated Secrets.
+  # Empty: only at pod start.
+  watchLayers: 10s
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 10m
+      memory: 32Mi
 
 nameOverride: ""
 fullnameOverride: ""

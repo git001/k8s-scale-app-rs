@@ -11,16 +11,93 @@ const BIN: &str = env!("CARGO_BIN_EXE_k8s-scale-app-rs");
 /// state cannot leak into the test.
 fn clean_cmd() -> Command {
     let mut cmd = Command::new(BIN);
-    for key in [
-        "K8S_SCALE_DEPLOYMENT",
-        "K8S_SCALE_NAMESPACE",
-        "K8S_SCALE_REPLICAS",
-        "K8S_SCALE_DRY_RUN",
-        "K8S_SCALE_EXTRA_CA_BUNDLE",
-    ] {
-        cmd.env_remove(key);
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("K8S_SCALE_") {
+            cmd.env_remove(key);
+        }
     }
     cmd
+}
+
+/// A complete `scale` call whose only possible usage error is the environment.
+fn scale_with_env(name: &str, value: &str) -> std::process::Output {
+    clean_cmd()
+        .args(["scale", "--name", "x", "--namespace", "y"])
+        .env("K8S_SCALE_REPLICAS", "-1")
+        .env(name, value)
+        .output()
+        .expect("scale run")
+}
+
+#[test]
+fn unknown_env_var_is_a_usage_error() {
+    let out = scale_with_env("K8S_SCALE_DRY_RUNN", "true");
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unknown environment variable: K8S_SCALE_DRY_RUNN"),
+        "expected the name, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("K8S_SCALE_DRY_RUN,"),
+        "expected the known names, got: {stderr}"
+    );
+}
+
+#[test]
+fn unknown_env_var_is_named_before_a_missing_argument() {
+    let out = clean_cmd()
+        .args(["scale", "--name", "x", "--namespace", "y"])
+        .env("K8S_SCALE_REPLICA", "2")
+        .output()
+        .expect("scale run");
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("unknown environment variable: K8S_SCALE_REPLICA"),
+        "expected the typo as the cause, got: {stderr}"
+    );
+}
+
+#[test]
+fn help_works_despite_an_unknown_env_var() {
+    let out = clean_cmd()
+        .arg("--help")
+        .env("K8S_SCALE_BOGUS", "1")
+        .output()
+        .expect("run --help");
+    assert!(out.status.success());
+}
+
+#[test]
+fn service_links_are_not_unknown_env_vars() {
+    // What Kubernetes sets for a Service named k8s-scale-app-rs. The run gets
+    // past the check and fails on the negative replica count instead.
+    for name in [
+        "K8S_SCALE_APP_RS_SERVICE_HOST",
+        "K8S_SCALE_APP_RS_SERVICE_PORT",
+        "K8S_SCALE_APP_RS_SERVICE_PORT_HTTPS",
+        "K8S_SCALE_APP_RS_PORT",
+        "K8S_SCALE_APP_RS_PORT_8443_TCP",
+        "K8S_SCALE_APP_RS_PORT_8443_TCP_ADDR",
+    ] {
+        let out = scale_with_env(name, "1");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("--replicas must be >= 0"),
+            "{name} should pass the check, got: {stderr}"
+        );
+    }
+}
+
+#[test]
+fn other_prefixes_are_not_checked() {
+    let out = scale_with_env("K8S_SCALEX", "1");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--replicas must be >= 0"),
+        "K8S_SCALEX should pass the check, got: {stderr}"
+    );
 }
 
 #[test]
@@ -111,7 +188,7 @@ fn scale_requires_deployment_arg() {
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("--deployment") || stderr.contains("K8S_SCALE_DEPLOYMENT"),
+        stderr.contains("--name") && stderr.contains("--deployment"),
         "expected missing-deployment error, got: {stderr}"
     );
 }
@@ -156,5 +233,51 @@ fn extra_ca_bundle_missing_file_fails_cleanly() {
     assert!(
         stderr.contains("failed to read CA bundle /nonexistent/path/ca.pem"),
         "unexpected error: {stderr}"
+    );
+}
+
+#[test]
+fn name_and_deployment_cannot_be_combined() {
+    let out = clean_cmd()
+        .args([
+            "scale",
+            "--name",
+            "a",
+            "--deployment",
+            "b",
+            "--namespace",
+            "unused",
+            "--replicas",
+            "1",
+        ])
+        .output()
+        .expect("scale run");
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("cannot be used with"),
+        "unexpected error: {stderr}"
+    );
+}
+
+#[test]
+fn unknown_kind_is_rejected() {
+    let out = clean_cmd()
+        .args([
+            "restart",
+            "--name",
+            "a",
+            "--namespace",
+            "unused",
+            "--kind",
+            "daemonset",
+        ])
+        .output()
+        .expect("restart run");
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("statefulset"),
+        "expected the possible values, got: {stderr}"
     );
 }

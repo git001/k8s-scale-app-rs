@@ -1,0 +1,1 @@
+{"apiVersion":"apps/v1","kind":"StatefulSet","metadata":{"name":"db","namespace":"demo"},"spec":{"serviceName":"db","selector":{"matchLabels":{"app":"db"}},"template":{"metadata":{"labels":{"app":"db"}},"spec":{"containers":[{"name":"db","image":"example.test/db:1"}]}}}}

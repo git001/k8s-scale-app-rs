@@ -1,0 +1,57 @@
+# Values of tests/k8s/vigil.sh. The image comes from --set.
+target:
+  name: web
+
+serviceAccount:
+  name: deploy
+  create: true
+
+image:
+  pullPolicy: Always
+
+vigil:
+  enabled: true
+  watchLayers: ""
+  jobs:
+    scale-dry:
+      mode: scale
+      replicas: 4
+      dryRun: true
+    scale-up:
+      mode: scale
+      replicas: 2
+    restart:
+      mode: restart
+    db-scale:
+      mode: scale
+      replicas: 2
+      kind: statefulset
+      name: db
+    db-restart:
+      mode: restart
+      kind: statefulset
+      name: db
+    missing:
+      mode: restart
+      name: does-not-exist
+    every-minute:
+      mode: scale
+      replicas: 3
+      name: scheduled
+      schedule: "* * * * *"
+  identities:
+    ci:
+      access: write
+      basic:
+        existingSecret: vigil-test-hash
+    viewer:
+      access: read
+      basic:
+        existingSecret: vigil-test-hash
+    ops:
+      access: write
+      tls: true
+  tls:
+    existingSecret: vigil-test-server-tls
+    clientCA:
+      existingSecret: vigil-test-client-ca

@@ -1,0 +1,76 @@
+{{- if and .Values.vigil.enabled .Values.vigil.gatewayApi.enabled }}
+{{- $gw := .Values.vigil.gatewayApi }}
+{{- if not $gw.parentRefs }}
+{{- fail "vigil.gatewayApi.parentRefs must name at least one Gateway" }}
+{{- end }}
+{{- if not (has $gw.routeType (list "http" "tls")) }}
+{{- fail (printf "vigil.gatewayApi.routeType must be \"http\" or \"tls\", got %q" $gw.routeType) }}
+{{- end }}
+{{- if eq $gw.routeType "tls" }}
+{{- if not $gw.hostnames }}
+{{- fail "vigil.gatewayApi.hostnames is required with routeType tls: the Gateway routes by the TLS server name" }}
+{{- end }}
+# TLS passes through the Gateway and ends at vigild, so Basic Auth and client
+# certificates both work.
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: {{ include "k8s-scale-app-rs.fullname" . }}
+  labels:
+    {{- include "k8s-scale-app-rs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vigil
+spec:
+  parentRefs:
+    {{- toYaml $gw.parentRefs | nindent 4 }}
+  hostnames:
+    {{- toYaml $gw.hostnames | nindent 4 }}
+  rules:
+    - backendRefs:
+        - name: {{ include "k8s-scale-app-rs.fullname" . }}
+          port: {{ .Values.vigil.service.port }}
+{{- else }}
+# TLS ends at the Gateway, so client certificates do not reach vigild.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "k8s-scale-app-rs.fullname" . }}
+  labels:
+    {{- include "k8s-scale-app-rs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vigil
+spec:
+  parentRefs:
+    {{- toYaml $gw.parentRefs | nindent 4 }}
+  {{- with $gw.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $gw.path | quote }}
+      backendRefs:
+        - name: {{ include "k8s-scale-app-rs.fullname" . }}
+          port: {{ .Values.vigil.service.port }}
+---
+# vigild only speaks HTTPS, so the Gateway has to connect to it with TLS.
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: {{ include "k8s-scale-app-rs.fullname" . }}
+  labels:
+    {{- include "k8s-scale-app-rs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vigil
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: {{ include "k8s-scale-app-rs.fullname" . }}
+  validation:
+    hostname: {{ required "vigil.gatewayApi.backendTLS.hostname is required: a name in the server certificate" $gw.backendTLS.hostname | quote }}
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: {{ required "vigil.gatewayApi.backendTLS.caConfigMap is required: a ConfigMap with the CA of the server certificate under the key ca.crt" $gw.backendTLS.caConfigMap }}
+{{- end }}
+{{- end }}

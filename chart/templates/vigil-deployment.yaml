@@ -1,0 +1,187 @@
+{{- if .Values.vigil.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-scale-app-rs.fullname" . }}
+  labels:
+    {{- include "k8s-scale-app-rs.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vigil
+spec:
+  # Scheduled jobs run once per replica, so there is exactly one, also during
+  # an update.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "k8s-scale-app-rs.vigilSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-scale-app-rs.labels" . | nindent 8 }}
+        app.kubernetes.io/component: vigil
+    spec:
+      serviceAccountName: {{ include "k8s-scale-app-rs.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- if .Values.vigil.openshift.enabled }}
+        {{- toYaml (omit .Values.podSecurityContext "runAsUser") | nindent 8 }}
+        {{- else }}
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- end }}
+      initContainers:
+        # The application image has no vigild, the vigil image cannot run the
+        # application: copy the static vigild binary into a shared volume.
+        - name: copy-vigild
+          image: {{ .Values.vigil.image.repository }}:{{ .Values.vigil.image.tag }}
+          imagePullPolicy: {{ .Values.vigil.image.pullPolicy }}
+          command: ["cp", "/usr/local/bin/vigild", "/vigil-bin/vigild"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: vigil-bin
+              mountPath: /vigil-bin
+      containers:
+        - name: vigil
+          image: {{ include "k8s-scale-app-rs.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/vigil-bin/vigild"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: https
+              containerPort: 8443
+          env:
+            - name: VIGIL_LAYERS
+              value: /etc/vigil/layers
+            - name: VIGIL_PATH_PREFIX
+              value: /tmp/vigil
+            - name: VIGIL_TLS_ADDR
+              value: "0.0.0.0:8443"
+            - name: VIGIL_CERT
+              value: /etc/vigil/tls/tls.crt
+            - name: VIGIL_KEY
+              value: /etc/vigil/tls/tls.key
+            - name: VIGIL_TLS_ANONYMOUS_ACCESS
+              value: {{ .Values.vigil.tls.anonymousAccess | quote }}
+            {{- if .Values.vigil.tls.clientCA.existingSecret }}
+            - name: VIGIL_TLS_CLIENT_CA
+              value: /etc/vigil/client-ca/ca.crt
+            {{- end }}
+            {{- with .Values.vigil.watchLayers }}
+            - name: VIGIL_WATCH_LAYERS
+              value: {{ . | quote }}
+            {{- end }}
+            - name: K8S_SCALE_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: RUST_LOG
+              value: {{ .Values.logLevel | quote }}
+            {{- if .Values.extraCA.enabled }}
+            - name: K8S_SCALE_EXTRA_CA_BUNDLE
+              value: {{ printf "%s/%s" .Values.extraCA.mountPath .Values.extraCA.key | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /v1/health?level=ready
+              port: https
+              scheme: HTTPS
+          livenessProbe:
+            httpGet:
+              path: /v1/health?level=alive
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.vigil.resources | nindent 12 }}
+          volumeMounts:
+            - name: vigil-bin
+              mountPath: /vigil-bin
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            - name: layers
+              mountPath: /etc/vigil/layers
+              readOnly: true
+            - name: server-tls
+              mountPath: /etc/vigil/tls
+              readOnly: true
+            {{- if .Values.vigil.tls.clientCA.existingSecret }}
+            - name: client-ca
+              mountPath: /etc/vigil/client-ca
+              readOnly: true
+            {{- end }}
+            {{- range $name, $identity := .Values.vigil.identities }}
+            {{- if $identity.basic }}
+            - name: identity-{{ $name }}
+              mountPath: /etc/vigil/identities/{{ $name }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- if .Values.extraCA.enabled }}
+            - name: extra-ca
+              mountPath: {{ .Values.extraCA.mountPath }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: vigil-bin
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: layers
+          configMap:
+            name: {{ include "k8s-scale-app-rs.fullname" . }}-vigil
+        - name: server-tls
+          secret:
+            secretName: {{ required "vigil.tls.existingSecret is required (a kubernetes.io/tls Secret, e.g. from cert-manager)" .Values.vigil.tls.existingSecret }}
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        {{- if .Values.vigil.tls.clientCA.existingSecret }}
+        - name: client-ca
+          secret:
+            secretName: {{ .Values.vigil.tls.clientCA.existingSecret }}
+            items:
+              - key: {{ .Values.vigil.tls.clientCA.key }}
+                path: ca.crt
+        {{- end }}
+        {{- range $name, $identity := .Values.vigil.identities }}
+        {{- if $identity.basic }}
+        - name: identity-{{ $name }}
+          secret:
+            secretName: {{ required (printf "vigil.identities.%s.basic.existingSecret is required" $name) $identity.basic.existingSecret }}
+            items:
+              - key: {{ $identity.basic.key | default "password-hash" }}
+                path: password-hash
+        {{- end }}
+        {{- end }}
+        {{- if .Values.extraCA.enabled }}
+        - name: extra-ca
+          configMap:
+            name: {{ include "k8s-scale-app-rs.extraCAConfigMapName" . }}
+            items:
+              - key: {{ .Values.extraCA.key }}
+                path: {{ .Values.extraCA.key }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

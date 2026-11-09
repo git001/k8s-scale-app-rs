@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: k8s-scale-app-rs-scaler-statefulset
+rules:
+  # get:   used in both modes
+  # patch: needed by the "restart" mode to update spec.template.metadata.annotations
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "patch"]
+  # scale subresource: used by the "scale" mode
+  - apiGroups: ["apps"]
+    resources: ["statefulsets/scale"]
+    verbs: ["get", "patch", "update"]

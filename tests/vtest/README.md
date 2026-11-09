@@ -36,6 +36,8 @@ KUBECONFIG=/path/to/test-cluster.yml CLUSTER_TEST=1 tests/vtest/run.sh --coverag
 | `v0005_extra_ca_bundle.vtc` | `--extra-ca-bundle`: valid bundle with and without a CA in the kubeconfig; missing, empty and malformed bundles stop before any request |
 | `v0006_env_vars.vtc` | Configuration through `K8S_SCALE_*` only, as in the CronJob |
 | `v0007_log_no_colors.vtc` | Log output that is not a terminal, as in a pod, has no ANSI colours |
+| `v0008_statefulset.vtc` | `--kind statefulset`: `scale` and `restart` patch the StatefulSet paths; `--name`; a 404 names the kind |
+| `v0009_name_kind_env.vtc` | `K8S_SCALE_NAME` and `K8S_SCALE_KIND`; `--deployment` still works and logs `kind=deployment` |
 
 ## How it works
 

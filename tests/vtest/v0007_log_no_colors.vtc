@@ -10,7 +10,7 @@ shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir
 
 # The shell captures the output through a pipe, as a container runtime does.
 # With colours, escape codes would stand between these words.
-shell -match {INFO k8s_scale_app_rs: scale request completed deployment=web namespace=demo replicas=3 dry_run=false} {
+shell -match {INFO k8s_scale_app_rs: scale request completed kind=deployment name=web namespace=demo replicas=3 dry_run=false} {
 	env -u NO_COLOR KUBECONFIG=${tmpdir}/kubeconfig \
 	${k8s_scale} scale --deployment web --namespace demo --replicas 3
 }

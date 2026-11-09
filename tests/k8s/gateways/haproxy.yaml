@@ -1,0 +1,35 @@
+# HAProxy Unified Gateway. tests/k8s/gateways/install.sh makes its Service a ClusterIP.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: haproxy
+spec:
+  controllerName: gate.haproxy.org/hug
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: g
+spec:
+  gatewayClassName: haproxy
+  listeners:
+    - name: https
+      port: 31443
+      protocol: HTTPS
+      hostname: scale.example.test
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: gateway-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: tls
+      port: 31444
+      protocol: TLS
+      hostname: scale.example.test
+      tls:
+        mode: Passthrough
+      allowedRoutes:
+        namespaces:
+          from: Same

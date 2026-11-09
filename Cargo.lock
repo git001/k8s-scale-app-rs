@@ -692,6 +692,7 @@ dependencies = [
  "mimalloc",
  "pem",
  "rustls",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",

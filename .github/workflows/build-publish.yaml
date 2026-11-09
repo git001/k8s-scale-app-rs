@@ -193,6 +193,9 @@ jobs:
       - name: Lint chart
         run: helm lint chart
 
+      - name: Check chart values schema
+        run: tests/chart/run.sh
+
       - name: Package chart
         run: |
           mkdir -p /tmp/charts
