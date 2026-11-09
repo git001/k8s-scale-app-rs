@@ -1,6 +1,6 @@
 vtest "restart: PATCH on the Deployment sets the restartedAt annotation"
 
-server s1 -listen 127.0.0.1:26443 {
+server s1 {
 	rxreq
 	expect req.method == PATCH
 	expect req.url ~ "^/apis/apps/v1/namespaces/demo/deployments/web[?]"
@@ -11,8 +11,11 @@ server s1 -listen 127.0.0.1:26443 {
 	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/deployment.json
 } -start
 
+# The server listens on a free port; the kubeconfig is the static fixture with that port.
+shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir}/kubeconfig}
+
 shell -match {restart request completed .*dry_run=false} {
-	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
 	${k8s_scale} restart --deployment web --namespace demo
 }
 

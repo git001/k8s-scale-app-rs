@@ -1,6 +1,6 @@
 vtest "K8S_SCALE_* environment variables, the way the CronJob configures the CLI"
 
-server s1 -listen 127.0.0.1:26443 {
+server s1 {
 	rxreq
 	expect req.url ~ "^/apis/apps/v1/namespaces/demo/deployments/web/scale[?]"
 	expect req.url ~ "dryRun=All"
@@ -8,8 +8,11 @@ server s1 -listen 127.0.0.1:26443 {
 	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/scale-3.json
 } -start
 
+# The server listens on a free port; the kubeconfig is the static fixture with that port.
+shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir}/kubeconfig}
+
 shell -match {scale request completed .*replicas=3 dry_run=true} {
-	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
 	K8S_SCALE_DEPLOYMENT=web K8S_SCALE_NAMESPACE=demo \
 	K8S_SCALE_REPLICAS=3 K8S_SCALE_DRY_RUN=true \
 	${k8s_scale} scale

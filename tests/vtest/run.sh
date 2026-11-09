@@ -47,10 +47,8 @@ fi
 
 cd "${REPO_ROOT}"
 
-# All tests listen on the fixed port of fixtures/kubeconfig.yaml, so they must
-# not run in parallel: -j 1.
 run_vtest() {
-    "${VTEST}" -j 1 \
+    "${VTEST}" \
         -Dk8s_scale="$1" \
         -Dvtestdir="${REPO_ROOT}/tests/vtest" \
         "${VTEST_OPTS[@]}" \

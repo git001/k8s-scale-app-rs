@@ -38,7 +38,7 @@ KUBECONFIG=/path/to/test-cluster.yml CLUSTER_TEST=1 tests/vtest/run.sh --coverag
 
 ## How it works
 
-- `fixtures/kubeconfig.yaml` points at `http://127.0.0.1:26443`, and each test starts its server there with `-listen 127.0.0.1:26443`. A static file needs a fixed port, so `run.sh` runs the tests one at a time (`-j 1`).
+- Each test's server listens on a free port. A `sed` line writes `fixtures/kubeconfig.yaml` with that port in place of `26443` to `${tmpdir}/kubeconfig`, so the tests do not conflict with each other or other programs and can run in parallel (`tests/vtest/run.sh -j 6`).
 - API responses are static files in `fixtures/`, sent with `txresp -bodyfrom`.
 - `fixtures/ca-bundle.pem` is a self-signed test certificate whose private key was discarded. `kubeconfig-with-ca.yaml` holds the same certificate.
 - `NO_COLOR=1` keeps ANSI colours out of the log lines that `shell -match` checks.

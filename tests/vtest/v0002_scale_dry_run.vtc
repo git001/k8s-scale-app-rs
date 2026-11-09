@@ -1,6 +1,6 @@
 vtest "scale --dry-run: dryRun=All; a response without spec logs the requested count"
 
-server s1 -listen 127.0.0.1:26443 {
+server s1 {
 	rxreq
 	expect req.method == PATCH
 	expect req.url ~ "/deployments/web/scale[?]"
@@ -9,8 +9,11 @@ server s1 -listen 127.0.0.1:26443 {
 	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/scale-no-spec.json
 } -start
 
+# The server listens on a free port; the kubeconfig is the static fixture with that port.
+shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir}/kubeconfig}
+
 shell -match {scale request completed .*replicas=0 dry_run=true} {
-	KUBECONFIG=${vtestdir}/fixtures/kubeconfig.yaml NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
 	${k8s_scale} scale --deployment web --namespace demo --replicas 0 --dry-run
 }
 
