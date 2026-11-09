@@ -35,13 +35,13 @@ KUBECONFIG=/path/to/test-cluster.yml CLUSTER_TEST=1 tests/vtest/run.sh --coverag
 | `v0004_not_found.vtc` | A 404 from the API for `scale` and `restart`: exit code 1, Deployment and reason in the error |
 | `v0005_extra_ca_bundle.vtc` | `--extra-ca-bundle`: valid bundle with and without a CA in the kubeconfig; missing, empty and malformed bundles stop before any request |
 | `v0006_env_vars.vtc` | Configuration through `K8S_SCALE_*` only, as in the CronJob |
+| `v0007_log_no_colors.vtc` | Log output that is not a terminal, as in a pod, has no ANSI colours |
 
 ## How it works
 
 - Each test's server listens on a free port. A `sed` line writes `fixtures/kubeconfig.yaml` with that port in place of `26443` to `${tmpdir}/kubeconfig`, so the tests do not conflict with each other or other programs and can run in parallel (`tests/vtest/run.sh -j 6`).
 - API responses are static files in `fixtures/`, sent with `txresp -bodyfrom`.
 - `fixtures/ca-bundle.pem` is a self-signed test certificate whose private key was discarded. `kubeconfig-with-ca.yaml` holds the same certificate.
-- `NO_COLOR=1` keeps ANSI colours out of the log lines that `shell -match` checks.
 
 The macros `run.sh` passes:
 

@@ -15,7 +15,7 @@ server s1 {
 shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir}/kubeconfig}
 
 shell -match {restart request completed .*dry_run=false} {
-	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig \
 	${k8s_scale} restart --deployment web --namespace demo
 }
 

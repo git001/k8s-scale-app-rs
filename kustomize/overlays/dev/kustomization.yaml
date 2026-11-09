@@ -6,27 +6,26 @@ namespace: my-app-dev
 resources:
   - ../../base
 
-# Dev demonstrates the full opt-in surface: creates the "deploy" SA,
-# grants RBAC, and mounts an extra CA bundle from a generated ConfigMap.
-# For preprod/prod the SA is assumed to exist; the extra-ca component
-# is left out unless the target cluster needs it.
+# Dev creates the "deploy" SA and grants RBAC. For preprod/prod the SA is
+# assumed to exist.
+#
+# To mount a corporate CA bundle, put it next to this file as ca-bundle.pem
+# and enable the extra-ca component and the configMapGenerator below.
 components:
   - ../../components/serviceaccount
   - ../../components/rbac
-  - ../../components/extra-ca
+  # - ../../components/extra-ca
+
+# configMapGenerator:
+#   - name: extra-ca-bundle
+#     files:
+#       - ca-bundle.pem
+#     options:
+#       disableNameSuffixHash: true
 
 images:
   - name: ghcr.io/git001/k8s-scale-app-rs
     newTag: dev
-
-# The extra-ca component mounts a ConfigMap named "extra-ca-bundle".
-# Generate it here from the local PEM file.
-configMapGenerator:
-  - name: extra-ca-bundle
-    files:
-      - ca-bundle.pem
-    options:
-      disableNameSuffixHash: true
 
 patches:
   - path: cronjob-patch.yaml

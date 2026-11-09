@@ -1,0 +1,18 @@
+vtest "log output that is not a terminal has no ANSI colours, without NO_COLOR too"
+
+server s1 {
+	rxreq
+	txresp -hdr "Content-Type: application/json" -bodyfrom ${vtestdir}/fixtures/scale-3.json
+} -start
+
+# The server listens on a free port; the kubeconfig is the static fixture with that port.
+shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir}/kubeconfig}
+
+# The shell captures the output through a pipe, as a container runtime does.
+# With colours, escape codes would stand between these words.
+shell -match {INFO k8s_scale_app_rs: scale request completed deployment=web namespace=demo replicas=3 dry_run=false} {
+	env -u NO_COLOR KUBECONFIG=${tmpdir}/kubeconfig \
+	${k8s_scale} scale --deployment web --namespace demo --replicas 3
+}
+
+server s1 -wait

@@ -16,7 +16,7 @@ shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir
 
 # The replica count in the log comes from the API response.
 shell -match {scale request completed .*replicas=3 dry_run=false} {
-	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig \
 	${k8s_scale} scale --deployment web --namespace demo --replicas 3
 }
 

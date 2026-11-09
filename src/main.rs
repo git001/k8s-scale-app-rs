@@ -1,3 +1,5 @@
+use std::ffi::OsStr;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -74,6 +76,10 @@ struct RestartArgs {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
+        .with_ansi(ansi_enabled(
+            std::io::stdout().is_terminal(),
+            std::env::var_os("NO_COLOR").as_deref(),
+        ))
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
@@ -90,6 +96,12 @@ async fn main() -> Result<()> {
         Command::Scale(args) => run_scale(args).await,
         Command::Restart(args) => run_restart(args).await,
     }
+}
+
+/// Colours only on a terminal: in a pod, the codes would end up in the logs.
+/// A non-empty `NO_COLOR` turns them off there too.
+fn ansi_enabled(stdout_is_terminal: bool, no_color: Option<&OsStr>) -> bool {
+    stdout_is_terminal && no_color.is_none_or(OsStr::is_empty)
 }
 
 async fn run_scale(args: ScaleArgs) -> Result<()> {
@@ -228,6 +240,14 @@ mod tests {
 
     fn make_pem(tag: &str, content: Vec<u8>) -> String {
         pem::encode(&pem::Pem::new(tag, content))
+    }
+
+    #[test]
+    fn ansi_enabled_only_on_a_terminal_without_no_color() {
+        assert!(ansi_enabled(true, None));
+        assert!(ansi_enabled(true, Some(OsStr::new(""))));
+        assert!(!ansi_enabled(true, Some(OsStr::new("1"))));
+        assert!(!ansi_enabled(false, None));
     }
 
     fn config_with_certs(root_cert: Option<Vec<Vec<u8>>>) -> Config {

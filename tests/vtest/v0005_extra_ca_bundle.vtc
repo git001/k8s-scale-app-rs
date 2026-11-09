@@ -12,14 +12,14 @@ shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig-with-ca.yaml > 
 
 # The kubeconfig has no CA: the bundle becomes the trust store.
 shell -match {merging extra CA certificates into trust store .*count=1} {
-	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig \
 	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
 		--extra-ca-bundle ${vtestdir}/fixtures/ca-bundle.pem
 }
 
 # The kubeconfig has a CA: the bundle is added to it.
 shell -match {merging extra CA certificates into trust store .*count=1} {
-	KUBECONFIG=${tmpdir}/kubeconfig-with-ca NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig-with-ca \
 	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
 		--extra-ca-bundle ${vtestdir}/fixtures/ca-bundle.pem
 }
@@ -28,19 +28,19 @@ server s1 -wait
 
 # The server is gone: these must fail on the bundle, not on the connection.
 shell -exit 1 -match {failed to read CA bundle /nonexistent/ca.pem} {
-	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig \
 	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
 		--extra-ca-bundle /nonexistent/ca.pem
 }
 
 shell -exit 1 -match {contains no CERTIFICATE entries} {
-	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig \
 	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
 		--extra-ca-bundle ${vtestdir}/fixtures/no-certificate.pem
 }
 
 shell -exit 1 -match {failed to parse PEM in .*malformed.pem} {
-	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig \
 	${k8s_scale} scale --deployment web --namespace demo --replicas 3 \
 		--extra-ca-bundle ${vtestdir}/fixtures/malformed.pem
 }

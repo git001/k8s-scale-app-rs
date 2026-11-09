@@ -154,11 +154,12 @@ Layout:
 
 ```
 kustomize/
-├── base/                         # CronJob + volume mount for extra-ca-bundle (default args: ["scale"])
+├── base/                         # CronJob only (default args: ["scale"])
 ├── components/
 │   ├── serviceaccount/           # opt-in: creates the "deploy" SA
-│   └── rbac/                     # opt-in: Role + RoleBinding (covers both scale and restart)
-└── overlays/{dev,preprod,prod}/  # patch schedule, image tag, env, optional CA CM
+│   ├── rbac/                     # opt-in: Role + RoleBinding (covers both scale and restart)
+│   └── extra-ca/                 # opt-in: mounts the extra-ca-bundle ConfigMap
+└── overlays/{dev,preprod,prod}/  # patch schedule, image tag, env
 ```
 
 Components replace Helm's `if` logic: an overlay only includes what it needs.
@@ -176,7 +177,7 @@ containers:
 
 | Stage   | components            | configMapGenerator (CA) | mode  |
 |---------|-----------------------|-------------------------|-------|
-| dev     | serviceaccount + rbac | included                | scale |
+| dev     | serviceaccount + rbac | template, commented out | scale |
 | preprod | rbac                  | template, commented out | scale |
 | prod    | rbac                  | template, commented out | scale |
 
@@ -194,9 +195,12 @@ extraCA:
   mountPath: /etc/ssl/extra-ca
 ```
 
-**Kustomize:** the base CronJob always mounts a ConfigMap named `extra-ca-bundle` with key `ca-bundle.pem`. Generate it from an overlay:
+**Kustomize:** the base CronJob uses no extra CA. Include the `extra-ca` component in an overlay; it mounts a ConfigMap named `extra-ca-bundle` with key `ca-bundle.pem`. Generate the ConfigMap in the same overlay from your PEM file:
 
 ```yaml
+components:
+  - ../../components/extra-ca
+
 configMapGenerator:
   - name: extra-ca-bundle
     files:

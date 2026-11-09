@@ -13,7 +13,7 @@ server s1 {
 shell {sed "s/26443/${s1_port}/" ${vtestdir}/fixtures/kubeconfig.yaml > ${tmpdir}/kubeconfig}
 
 shell -match {scale request completed .*replicas=0 dry_run=true} {
-	KUBECONFIG=${tmpdir}/kubeconfig NO_COLOR=1 \
+	KUBECONFIG=${tmpdir}/kubeconfig \
 	${k8s_scale} scale --deployment web --namespace demo --replicas 0 --dry-run
 }
 
